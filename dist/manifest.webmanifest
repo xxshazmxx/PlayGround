@@ -1,0 +1,13 @@
+{
+  "name": "Rustfall",
+  "short_name": "Rustfall",
+  "description": "Rust-inspired browser survival — PC + mobile.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#0d1117",
+  "theme_color": "#e8622c",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}
