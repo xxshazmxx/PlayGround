@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>Turbo Kart Playground — Browser Kart Racer</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    background: #0b1020; color: #f2f5ff; min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center;
+  }
+  header { text-align: center; padding: 20px 16px 8px; max-width: 900px; }
+  header h1 { margin: 0 0 8px; font-size: clamp(22px, 4vw, 36px); letter-spacing: .5px; }
+  header p { margin: 0; opacity: .85; font-size: clamp(13px, 2.4vw, 16px); }
+  .badge {
+    display: inline-block; margin-bottom: 10px; padding: 4px 10px; border-radius: 999px;
+    background: #223; border: 1px solid #445; font-size: 12px; letter-spacing: .4px;
+  }
+  main { width: 100%; max-width: 960px; padding: 12px 16px 24px; }
+  #stage {
+    position: relative; border-radius: 14px; overflow: hidden;
+    border: 1px solid #2c3a5e; background: #111a33;
+  }
+  canvas { display: block; width: 100%; height: auto; touch-action: none; }
+  #hud {
+    position: absolute; top: 10px; left: 10px; right: 10px;
+    display: flex; justify-content: space-between; gap: 8px;
+    font-size: 13px; pointer-events: none;
+  }
+  #hud span { background: rgba(0,0,0,.55); padding: 6px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,.15); }
+  #controls {
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top: 12px;
+  }
+  #controls button {
+    padding: 14px 10px; font-size: 16px; font-weight: 700; border-radius: 12px;
+    border: 1px solid #3a4a75; background: #1b2547; color: #fff; cursor: pointer;
+    touch-action: manipulation; user-select: none; -webkit-user-select: none;
+  }
+  #controls button:active { background: #2c3c72; transform: scale(.98); }
+  #startBtn { grid-column: 1 / -1; background: #2e7d32; border-color: #4caf50; }
+  footer { padding: 0 16px 28px; max-width: 900px; text-align: center; opacity: .75; font-size: 13px; }
+  @media (min-width: 700px) {
+    #controls { grid-template-columns: 1fr 1fr 1fr 1fr 1fr; }
+    #startBtn { grid-column: auto; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="badge">ORIGINAL PROJECT — NOT AFFILIATED WITH CRASH TEAM RACING</div>
+  <h1>Turbo Kart Playground</h1>
+  <p>Offline single-player browser kart demo. Touch + keyboard supported. Online multiplayer roadmap below.</p>
+</header>
+<main>
+  <div id="stage">
+    <canvas id="game" width="960" height="540" aria-label="Kart track demo"></canvas>
+    <div id="hud"><span id="lap">LAP 1/3</span><span id="speed">0 km/h</span><span id="pos">P1</span></div>
+  </div>
+  <div id="controls">
+    <button id="leftBtn" aria-label="Steer left">◀ LEFT</button>
+    <button id="startBtn">START</button>
+    <button id="rightBtn" aria-label="Steer right">RIGHT ▶</button>
+    <button id="brakeBtn" aria-label="Brake">BRAKE</button>
+    <button id="gasBtn" aria-label="Accelerate">GAS ▲</button>
+  </div>
+</main>
+<footer>
+  <p>Single-file static build. No accounts, no downloads. Multiplayer would need authoritative servers + anti-cheat — listed as future work to keep this preview fast on phone/tablet.</p>
+</footer>
+<script>
+(function () {
+  var canvas = document.getElementById('game');
+  var ctx = canvas.getContext('2d');
+  var lapEl = document.getElementById('lap');
+  var speedEl = document.getElementById('speed');
+  var running = false, t = 0, speed = 0, targetSpeed = 0, steer = 0, lap = 1;
+  var keys = {};
+  var input = { left: false, right: false, gas: false, brake: false };
+
+  function bindHold(id, key, prop) {
+    var el = document.getElementById(id);
+    var on = function (e) { if (e) e.preventDefault(); input[prop] = true; keys[key] = true; };
+    var off = function (e) { if (e) e.preventDefault(); input[prop] = false; keys[key] = false; };
+    el.addEventListener('pointerdown', on);
+    el.addEventListener('pointerup', off);
+    el.addEventListener('pointerleave', off);
+    el.addEventListener('pointercancel', off);
+  }
+  bindHold('leftBtn', 'ArrowLeft', 'left');
+  bindHold('rightBtn', 'ArrowRight', 'right');
+  bindHold('gasBtn', 'ArrowUp', 'gas');
+  bindHold('brakeBtn', 'ArrowDown', 'brake');
+
+  window.addEventListener('keydown', function (e) { keys[e.key] = true; });
+  window.addEventListener('keyup', function (e) { keys[e.key] = false; });
+  document.getElementById('startBtn').addEventListener('click', function () {
+    running = !running;
+    this.textContent = running ? 'PAUSE' : 'START';
+  });
+
+  function trackPoint(angle, rad) {
+    return { x: 480 + Math.cos(angle) * rad.x, y: 270 + Math.sin(angle) * rad.y };
+  }
+  function draw() {
+    t += 0.016;
+    var gas = input.gas || keys['ArrowUp'] || keys['w'] || running;
+    var brake = input.brake || keys['ArrowDown'] || keys['s'];
+    var left = input.left || keys['ArrowLeft'] || keys['a'];
+    var right = input.right || keys['ArrowRight'] || keys['d'];
+    targetSpeed = brake ? 0 : (gas ? 220 : 60);
+    speed += (targetSpeed - speed) * 0.04;
+    steer += ((right ? 1 : 0) - (left ? 1 : 0)) * 0.06;
+    var lapsDone = Math.floor(t / 20) + 1;
+    lap = Math.min(3, lapsDone);
+    lapEl.textContent = 'LAP ' + lap + '/3';
+    speedEl.textContent = Math.round(speed) + ' km/h';
+
+    // grass
+    var g = ctx.createLinearGradient(0, 0, 0, 540);
+    g.addColorStop(0, '#1d5c34'); g.addColorStop(1, '#144422');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, 960, 540);
+    // track
+    ctx.lineWidth = 90; ctx.strokeStyle = '#3a3f4a'; ctx.lineCap = 'round';
+    ctx.beginPath();
+    for (var i = 0; i <= 60; i++) {
+      var a = (i / 60) * Math.PI * 2 + steer * 0.15;
+      var p = trackPoint(a, { x: 320, y: 180 });
+      if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
+    }
+    ctx.closePath(); ctx.stroke();
+    ctx.lineWidth = 78; ctx.strokeStyle = '#565d6b';
+    ctx.stroke();
+    // center line
+    ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.setLineDash([18, 18]);
+    ctx.beginPath();
+    for (var j = 0; j <= 60; j++) {
+      var a2 = (j / 60) * Math.PI * 2 + steer * 0.15;
+      var p2 = trackPoint(a2, { x: 320, y: 180 });
+      if (j === 0) ctx.moveTo(p2.x, p2.y); else ctx.lineTo(p2.x, p2.y);
+    }
+    ctx.closePath(); ctx.stroke(); ctx.setLineDash([]);
+    // karts (player + 3 bots)
+    var karts = [
+      { c: '#ff5252', off: 0.0, w: 46 },
+      { c: '#40c4ff', off: 0.12, w: 42 },
+      { c: '#ffd740', off: -0.14, w: 42 },
+      { c: '#69f0ae', off: 0.28, w: 42 }
+    ];
+    for (var k = 0; k < karts.length; k++) {
+      var ang = t * (0.35 + speed / 1400) + karts[k].off + steer * 0.05;
+      var kp = trackPoint(ang, { x: 320, y: 180 });
+      ctx.save(); ctx.translate(kp.x, kp.y); ctx.rotate(ang + Math.PI / 2);
+      ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.fillRect(-20, -12, 40, 30);
+      ctx.fillStyle = karts[k].c; ctx.fillRect(-18, -14, 36, 26);
+      ctx.fillStyle = '#111'; ctx.fillRect(-20, -16, 8, 32); ctx.fillRect(12, -16, 8, 32);
+      ctx.fillStyle = '#fff'; ctx.fillRect(-8, -14, 16, 8);
+      ctx.restore();
+    }
+    // start banner
+    if (!running) {
+      ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(0, 220, 960, 100);
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 30px system-ui, sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText('TAP START TO ROLL  •  ARROWS / TOUCH TO DRIVE', 480, 280);
+    }
+    requestAnimationFrame(draw);
+  }
+  running = true;
+  document.getElementById('startBtn').textContent = 'PAUSE';
+  requestAnimationFrame(draw);
+})();
+</script>
+</body>
+</html>
